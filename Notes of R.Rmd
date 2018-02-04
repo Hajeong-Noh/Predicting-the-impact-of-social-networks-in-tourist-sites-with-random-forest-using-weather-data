@@ -1,0 +1,502 @@
+---
+title: "Web Science Project"
+output: 
+---
+
+First, we download the data to the current project.
+
+```{r}
+library(readxl)
+dsetm <- read_excel("C:/Users/USUARIO/Desktop/final_dataset_20171216_weekenddays.xlsx", 
+    col_types = c("text", "numeric", "numeric", 
+        "date", "blank", "numeric", "blank", 
+        "blank", "blank", "numeric", "text", 
+        "numeric", "numeric", "numeric", 
+        "text", "numeric", "numeric"))
+head(dsetm)
+
+dsetm$date = as.Date(dsetm$date, "%y%m%d")
+
+```
+
+
+
+Let's see with more datail what are we working with. 
+
+
+```{r}
+library("ggplot2", lib.loc="~/R/win-library/3.4")
+library(scales)
+
+
+g1 = ggplot(dsetm, aes(x=date, y=likes, color = temperature)) 
+g1 + geom_col() + xlim(as.Date("2014-01-01"),
+                       as.Date("2017-12-25")) +
+  scale_y_continuous(trans = log2_trans(),
+                     breaks = trans_breaks("log2", function(x) 2^x),
+                     labels = trans_format("log2", math_format(2^.x))) +
+  ggtitle("Likes throught the years") +
+  xlab("Years") + ylab("Likes")
+
+```
+
+
+As we can cleartly appreciate, there's an increase of the usage of the social network through the years with a sinusoidal behavior concerning the temperature. 
+
+
+
+
+
+One problem, is that there are too many places to start analyzing the data correctly. is there some data that we can undervalue?
+
+```{r}
+# We add the variable post
+dsetm$post = seq(1,1, length.out = length(dsetm$date))
+library("dplyr", lib.loc="~/R/win-library/3.4")
+
+m = dsetm %>%
+group_by(Place_type, date) %>%
+summarise(Frequency = sum(post), tem = mean(temperature))
+
+
+# which places are more important
+r = m %>%
+  group_by(Place_type) %>%
+  summarise(Frequency = sum(Frequency), percent = 100
+            *sum(Frequency)/34394)
+
+r
+
+
+```
+
+We can clearly appreciate some data that we can not take into consideration. 
+
+
+We selected the ones that have more than 1.4 percent of significance in order to reduce the type of places to the half.
+
+```{r}
+#We select the most hald most relevant 
+pre_leng = length(dsetm)
+rr = subset(r, percent > 1.4)
+rr
+#dsetm = subset(dsetm, dsetm$Place_type %in% rr$Place_type)
+dsetm = subset(dsetm, dsetm$Place_type %in% rr$Place_type)
+
+
+```
+
+How many places exactly do we have 
+
+```{r}
+
+print(length(dsetm))
+
+```
+
+
+
+
+In a further analysis, takin in account the mean and variability.
+
+```{r}
+p = ggplot(dsetm, aes(x=Place_type, y=temperature, fill = Place_type)) + geom_boxplot()
+
+p = p +  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+
+p 
+
+
+
+```
+
+We sort them to appreciate similarities:
+
+```{r}
+# Order for the variables
+variables_order = c("Dance Clubs & Discos", "Churches & Cathedrals","Architectural Buildings , Operas", "Arenas & Stadiums","Monuments & Statues","Historic Sites","Points of Interest & Landmarks","Castles","Bars & Clubs, Nightlife","Specialty Museums","Other Outdoor Activities","Parks","Architectural Buildings","Mountains")
+p = p + scale_x_discrete(limits=variables_order)
+p = p + geom_hline(yintercept=18, linetype="dashed", color = "red")
+p = p + geom_hline(yintercept=15, linetype="dashed", color = "blue")
+p = p + geom_hline(yintercept=12, linetype="dashed", color = "yellow")
+
+p 
+```
+Just at looking at the big picture we can clearly identify places that behave in the same way.
+
+
+
+Further tests are necesary. we are going to start with histograms.
+
+```{r}
+# We separete the things
+blue = subset(dsetm, Place_type %in% variables_order[4:7])
+red = subset(dsetm, Place_type %in% variables_order[8:14])
+yellow = subset(dsetm, Place_type %in% variables_order[1:3])
+```
+
+
+Red association:
+
+```{r}
+ggplot(red, aes(x=temperature, color=Place_type, fill=Place_type)) +
+geom_histogram(aes(y=..density..))+labs(title="",x="Temperature", y = "Density")
+```
+
+
+Blueu association
+```{r}
+ggplot(blue, aes(x=temperature, color=Place_type, fill=Place_type)) +
+  geom_histogram(aes(y=..density..))+labs(title="",x="Temperature", y = "Density")
+```
+
+
+Yellow asociation: 
+
+```{r}
+ggplot(yellow, aes(x=temperature, color=Place_type, fill=Place_type)) +
+  geom_histogram(aes(y=..density..))+labs(title="",x="Temperature", y = "Density")
+
+```
+
+
+Even if the basis of the t-student are not fulfill in all cases, we can use at first point for starting.
+```{r}
+mm1 = 1
+mm2 = 1
+B = matrix(nrow=14, ncol=14)
+for (x in variables_order) {
+  for (y in variables_order){
+    k1 =  subset(dsetm$temperature, dsetm$Place_type == x)
+    k2 =  subset(dsetm$temperature, dsetm$Place_type == y)
+    t = t.test(k1,k2)
+    B[mm2, mm1] = as.numeric(t$p.value)
+    mm2 = mm2 + 1
+  }
+  mm1 = mm1 + 1
+  mm2 = 1
+}
+B
+```
+
+```{r}
+mm1 = 1
+mm2 = 1
+A = matrix(nrow=14, ncol=14)
+for (x in variables_order) {
+  for (y in variables_order){
+    k1 =  subset(dsetm$temperature, dsetm$Place_type == x)
+    k2 =  subset(dsetm$temperature, dsetm$Place_type == y)
+    t = t.test(k1,k2)
+    A[mm2, mm1] = as.numeric(t$p.value) > 0.05
+    mm2 = mm2 + 1
+  }
+  mm1 = mm1 + 1
+  mm2 = 1
+}
+A
+
+```
+We can clearly appreciate that there are some similarities among the places, which points out that there are relationships in them.
+
+
+
+
+
+Obviosly a temporal analysis is required, we used as our measurement variable the post per day per place. 
+
+```{r}
+# We are going to group by date
+# Calendar Heat Map
+# Usging ggTimeSeries
+# You must install devtools
+# devtools::install_github('Ather-Energy/ggTimeSeries')
+library("dplyr", lib.loc="~/R/win-library/3.4")
+library("ggplot2", lib.loc="~/R/win-library/3.4")
+library("ggTimeSeries", lib.loc="~/R/win-library/3.4")
+united = dsetm %>%
+group_by(date) %>%
+summarise(posts = sum(post), likes = sum(likes))
+#united
+
+
+```
+
+
+
+2015
+
+Making a Series of time graph we can appreciate how the behavior in the year is:
+
+```{r}
+united2015 = subset(united, united$date > "2015-01-01")
+united2015 = subset(united2015, united2015$date < "2016-01-01")
+
+
+# Calendar Heat Map
+# Usging ggTimeSeries
+# You must install devtools
+# devtools::install_github('Ather-Energy/ggTimeSeries')
+
+# 2015
+p2015 = ggplot_calendar_heatmap(united2015,
+'date',
+'posts'
+)
+
+p2015 +
+xlab(NULL) +
+ylab(NULL) +
+scale_fill_continuous(low = 'green', high = 'red') +
+facet_wrap(~Year, ncol = 1)
+
+```
+
+2016
+
+The same for 2017.
+
+```{r}
+# 2016
+united2016 = subset(united, united$date > "2016-01-01")
+united2016 = subset(united2016, united2016$date < "2017-01-01")
+
+p2016 = ggplot_calendar_heatmap(united2016,
+                                'date',
+                                'posts'
+)
+
+p2016 +
+  xlab(NULL) +
+  ylab(NULL) +
+  scale_fill_continuous(low = 'green', high = 'red') +
+  facet_wrap(~Year, ncol = 1)
+
+```
+
+
+
+2017
+Same
+
+
+
+```{r}
+# 2017
+
+united2017 = subset(united, united$date > "2017-01-01")
+
+p2017 = ggplot_calendar_heatmap(united2017,
+                                'date',
+                                'posts'
+)
+
+p2017 +
+  xlab(NULL) +
+  ylab(NULL) +
+  scale_fill_continuous(low = 'green', high = 'red') +
+  facet_wrap(~Year, ncol = 1)
+
+```
+
+Look at the means 
+
+```{r}
+mean(united2015$posts)
+mean(united2016$posts)
+mean(united2017$posts)
+summary(united2015$posts)
+summary(united2016$posts)
+summary(united2017$posts)
+```
+As we can clearly see the means are quite different.
+
+
+
+
+
+Predict data:
+
+
+Because our data is so disperse between years we have to standarize it, the problem is that the factor of growing are not explained by the data itself. In this cases a series of time would be practical but is out of the scope of the course.
+
+.
+
+First we, clean the data from NA and group it by variables of importance.
+```{r}
+dset_clean =subset(dsetm, dsetm$wind_speed != "NA")
+dset_clean$wind_speed = as.numeric(dset_clean$wind_speed)
+dset_clean = dset_clean[complete.cases(dset_clean), ]
+
+gdata = dset_clean %>%
+  group_by(Place_type, date) %>%
+  summarise(posts = sum(post),
+            rating = mean(Raiting), precipitation = mean(precipitation),
+            temperature = mean(temperature), humidity = mean(humidity),
+            wind = mean(wind_speed), number_day = mean(number_day_1_Sunday_and_7_Saturday),
+            weekend = mean(is_weekend), wind = mean(wind_speed))
+
+
+gdata$date = as.Date(gdata$date, "%y%m%d")
+
+
+
+```
+
+
+We scale it yearly 
+
+```{r}
+
+gdata$month = strftime(gdata$date,"%m")
+gdata$day = strftime(gdata$date,"%d")
+gdata$year = strftime(gdata$date,"%y")
+united2015 = subset(gdata, gdata$date > "2015-01-01")
+united2015 = subset(united2015, gdata$date < "2016-01-01")
+united2016 = subset(gdata, gdata$date > "2016-01-01")
+united2016 = subset(united2016, gdata$date < "2017-01-01")
+united2017 = subset(gdata, gdata$date > "2017-01-01")
+united2015$posts = scale(united2015$posts)
+united2016$posts = scale(united2016$posts)
+united2017$posts = scale(united2017$posts)
+
+new <- rbind(united2015, united2016)
+new = rbind(new, united2017)
+gdata = new
+```
+
+
+We change many data to factors in order to work.
+```{r}
+gdata = subset(gdata, select = -c(date))
+gdatasave = gdata
+
+gdata$Place_type = as.factor(gdata$Place_type)
+gdata$number_day = as.factor(gdata$number_day)
+gdata$weekend = as.factor(gdata$weekend)
+gdata$month = as.factor(gdata$month)
+gdata$year = as.factor(gdata$year)
+
+```
+
+
+
+```{r}
+require("GGally")
+ggpairs(gdatasave[2:7])
+```
+
+
+```{r}
+u = lm(posts???. , data= gdatasave[2:7] )
+summary(u)
+```
+
+
+
+
+Because working with a scaled parameter does not make sense at first (needs rescale) we can change that parameter to one a categorical one that makes sense,
+
+```{r}
+u = na.omit(gdata$posts)
+plot(density(u))
+gdata5 = gdata
+#gdata$posts 
+gdata1 = subset(gdata, gdata$posts <= 0)
+gdata2 = subset(gdata, gdata$posts <= 2)
+gdata2 = subset(gdata2, gdata2$posts > 0)
+gdata3 = subset(gdata, gdata$posts > 2)
+
+for(i in 1:length(gdata1$posts)) { gdata1$posts[[i]] <- "Level 1" } ;
+for(i in 1:length(gdata2$posts)) { gdata2$posts[[i]] <- "Level 2" } ;
+for(i in 1:length(gdata3$posts)) { gdata3$posts[[i]] <- "Level 3" } ;
+new <- rbind(gdata1, gdata2)
+new = rbind(new, gdata3)
+gdata = new
+gdata$posts = as.factor(gdata$posts)
+```
+
+
+
+
+Now that the data fulfill the requirements, we can start using Random Forests.
+```{r}
+library(randomForest)
+library(caret)
+
+ind <- sample(2, nrow(gdata), replace = TRUE, prob = c(0.7, 0.3))
+train = gdata[ind==1,]
+test = gdata[ind==2,]
+
+
+rf <- randomForest(posts~., data=train,
+                   ntree = 300,
+                   mtry = 6,
+                   importance = TRUE,
+                   proximity = TRUE)
+
+
+rf
+
+
+```
+
+
+Let's see how many tree and error
+```{r}
+print(rf)
+plot(rf)
+```
+
+
+No. of nodes for the trees
+```{r}
+hist(treesize(rf),
+     main = "No. of Nodes for the Trees",
+     col = "green")
+
+```
+
+
+Let's tune the tree
+```{r}
+train <- as.data.frame(train)
+pp = tuneRF(train[,-2], train[,2],
+            stepFactor = 0.5,
+            plot = TRUE,
+            ntreeTry = 300,
+            trace = TRUE,
+            improve = 0.05)
+
+pp
+```
+
+
+How good is the accuaracy: 
+```{r}
+p1 <- predict(rf, train)
+confusionMatrix(p1, train$posts)
+
+
+```
+
+Obviosly, we can to measure it with the test data:
+```{r}
+
+p2 <- predict(rf, test)
+confusionMatrix(p2, test$posts)
+```
+
+
+How important the  
+
+```{r}
+
+varImpPlot(rf,
+           sort = T)
+```
+
+
+Things that we can do to improve the work:
+
+1) Using the Random Forest to select variables in order to select a good basis for the Series of Time. 
